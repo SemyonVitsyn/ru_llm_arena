@@ -10,7 +10,7 @@ num_choices: 1
 model_list:
   - gpt-3.5-turbo-0125
   - gpt-4-1106-preview
-  - gigachat_lite
-  - gigachat_pro
+  # - gigachat_lite
+  # - gigachat_pro
   - gpt-4o-mini
   - gpt-3.5-turbo-1106

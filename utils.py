@@ -3,10 +3,12 @@ import json
 import time
 import yaml
 import random
-import asyncio
-
-from typing import Optional
 from glob import glob
+
+import pandas as pd
+from evalica import pairwise_frame
+import numpy as np
+import plotly.express as px
 
 # API setting constants
 API_MAX_RETRY = 16
@@ -404,3 +406,91 @@ def reorg_answer_file(answer_file):
     with open(answer_file, "w") as fout:
         for qid in qids:
             fout.write(answers[qid])
+
+
+def get_models_answers_lengths(questions_df, model_answers_df) -> pd.DataFrame:
+    model_answers_lengths = []
+    for model_name, row in model_answers_df.iterrows():
+        model_stats = {'model_name': model_name}
+        for question in questions_df.index:
+            if question in row and isinstance(row[question], dict):
+                turn = row[question]["choices"][0]["turns"][0]
+                model_stats[question] = turn["token_len"]
+            else:
+                model_stats[question] = 0
+        model_answers_lengths.append(model_stats)
+    return pd.DataFrame(model_answers_lengths).set_index('model_name')
+
+
+def predict_win_rate(ratings: dict[str, float], scale: float = 400., base: float = 10.) -> pd.DataFrame:
+    scores = pd.Series(ratings).sort_index()
+    scores /= scale
+    scores = base ** scores
+
+    df = pairwise_frame(scores)
+    df.index.name = "model_b"
+    df.columns = df.index.copy(name="model_a")
+    np.fill_diagonal(df.values, np.nan)
+
+    return df
+
+
+def get_win_rate_column(df, column, baseline):
+    to_dict = df[["model", column]].set_index("model").to_dict()[column]
+    win_rate_table = predict_win_rate(to_dict)
+    return win_rate_table[baseline].fillna(0.5).apply(lambda x: round(x * 100, 2))
+
+
+def pretty_print_two_ratings(ratings_1, ratings_2, column_names):
+    df = pd.DataFrame([
+        [n, ratings_1[n], ratings_2[n]] for n in ratings_1.keys()
+    ], columns=["Model", column_names[0], column_names[1]]).sort_values(column_names[0], ascending=False).reset_index(
+        drop=True)
+    df[column_names[0]] = (df[column_names[0]] + 0.5).astype(int)
+    df[column_names[1]] = (df[column_names[1]] + 0.5).astype(int)
+    df.index = df.index + 1
+    return df
+
+
+def visualize_bootstrap_scores(df, title):
+    bars = pd.DataFrame(dict(
+        lower=df.quantile(.025),
+        rating=df.quantile(.5),
+        upper=df.quantile(.975))
+    ).reset_index(names="model").sort_values("rating", ascending=False)
+    bars['error_y'] = bars['upper'] - bars["rating"]
+    bars['error_y_minus'] = bars['rating'] - bars["lower"]
+    bars['rating_rounded'] = np.round(bars['rating'], 2)
+    fig = px.scatter(bars, x="model", y="rating", error_y="error_y",
+                     error_y_minus="error_y_minus", text="rating_rounded",
+                     title=title)
+    fig.update_layout(xaxis_title="Model", yaxis_title="Rating",
+                      height=600)
+    return fig
+
+
+def get_score(judgment, pattern, pairwise=True):
+    matches = pattern.findall(judgment)
+    matches = [m for m in matches if m != ""]
+    if len(set(matches)) == 0:
+        return None, True
+    elif len(set(matches)) == 1:
+        if pairwise:
+            return matches[0].strip("\n"), False
+        return int(matches[0])
+    else:
+        return None, False
+    
+
+# get answer from model
+def get_answer(model, conv, temperature, max_tokens, endpoint_dict=None):
+    api_dict = get_endpoint(endpoint_dict["endpoints"])
+    model_name = endpoint_dict['model_name'] if endpoint_dict else model
+
+    if endpoint_dict["api_type"] == "anthropic":
+        output = chat_completion_anthropic(model_name, conv, temperature, max_tokens)
+    elif endpoint_dict["api_type"] == "azure":
+        output = chat_completion_openai_azure(model_name, conv, temperature, max_tokens, api_dict)
+    else:
+        output = chat_completion_openai(model_name, conv, temperature, max_tokens, 1, api_dict)
+    return output

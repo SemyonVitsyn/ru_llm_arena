@@ -66,19 +66,19 @@ yandex_gpt_pro:
     api_type: yandex
     parallel: 2
 
-gigachat_lite:
-    model_name: GigaChat
-    endpoints:
-        - auth_token: ...
-    api_type: gigachat
-    parallel: 1
+# gigachat_lite:
+#     model_name: GigaChat
+#     endpoints:
+#         - auth_token: ...
+#     api_type: gigachat
+#     parallel: 1
 
-gigachat_pro:
-    model_name: GigaChat-Pro
-    endpoints:
-        - auth_token: ...
-    api_type: gigachat
-    parallel: 1
+# gigachat_pro:
+#     model_name: GigaChat-Pro
+#     endpoints:
+#         - auth_token: ...
+#     api_type: gigachat
+#     parallel: 1
 
 best_tgpt_checkpoint_oh_dpo_uf:
     model_name: './best_tgpt_checkpoint/'

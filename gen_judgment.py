@@ -1,6 +1,4 @@
 import json
-import yaml
-import argparse
 import os
 import re
 import concurrent.futures
@@ -9,208 +7,169 @@ from tqdm import tqdm
 
 from utils import (
     load_questions,
-    chat_completion_openai,
-    chat_completion_openai_azure,
-    chat_completion_anthropic,
     load_questions,
     load_model_answers,
-    get_endpoint,
     make_config,
+    get_score,
+    get_answer
 )
 
 
-def get_score(judgment, pattern, pairwise=True):
-    matches = pattern.findall(judgment)
-    matches = [m for m in matches if m != ""]
-    if len(set(matches)) == 0:
-        return None, True
-    elif len(set(matches)) == 1:
-        if pairwise:
-            return matches[0].strip("\n"), False
-        return int(matches[0])
-    else:
-        return None, False
+class Judge:
+    def __init__(self, judgement_config_file, endpoint_file):
+        self.settings = make_config(judgement_config_file)
+        self.endpoint_list = make_config(endpoint_file)
+        if self.settings["regex_pattern"]:
+            self.pattern = re.compile(self.settings["regex_pattern"])
+        
+        self.questions = load_questions(os.path.join("data", self.settings["bench_name"], "question.jsonl"))
+        self.model_answers = load_model_answers(os.path.join("data", self.settings["bench_name"], "model_answer"))
+
+        self.models = [model for model in self.settings["model_list"]]
+        
+        self.ref_answers = None
+        if self.settings["reference"]:
+            self.ref_answers = load_model_answers(os.path.join("data", self.settings["bench_name"], "reference_answer"))
+            self.ref_answers = [self.ref_answers[model] for model in self.settings["ref_model"]]
+    
+        self.output_dir = os.path.join("data", self.settings['bench_name'], "model_judgment", self.settings['judge_model'])
+        self.existing_judgments = load_model_answers(self.output_dir)
+        self.endpoint_info = self.endpoint_list[self.settings["judge_model"]]
+
+    def judgment(self, question, answer, reference, baseline, output_file):
+        settings = self.settings
+        model = settings["judge_model"]
+
+        num_games = 2 if settings["pairwise"] else 1
+
+        output = {
+            "question_id":question["question_id"],
+            "model":answer["model_id"],
+            "judge": model,
+            "games":[]
+            }
+
+        for game in range(num_games):
+            conv = [{"role": "system", "content": settings["system_prompt"]}]
+
+            for template in settings["prompt_template"]:
+                prompt_args = {}
+
+                for i, turn in enumerate(question["turns"]):
+                    prompt_args[f"question_{i+1}"] = turn["content"]
+                base = 1
+
+                if baseline:
+                    if game % 2 == 1: # swap position
+                        temp = baseline
+                        baseline = answer
+                        answer = temp
+
+                    for i, turn in enumerate(baseline["choices"][0]["turns"]):
+                        prompt_args[f"answer_{i+1}"] = turn["content"]
+                        base += 1
+                if answer:
+                    for i, turn in enumerate(answer["choices"][0]["turns"]):
+                        prompt_args[f"answer_{i+base}"] = turn["content"]
+
+                if reference:
+                    for j, ref_answer in enumerate(reference):
+                        for i, turn in enumerate(ref_answer["choices"][0]["turns"]):
+                            prompt_args[f"ref_answer_{i+j+1}"] = turn["content"]
+                
+                user_prompt = template.format(**prompt_args)
+                conv.append({"role": "user", "content": user_prompt})
+
+            judgment = ""
+            for _ in range(2):
+                new_judgment = get_answer(
+                    model,
+                    conv,
+                    settings["temperature"],
+                    settings["max_tokens"],
+                    self.endpoint_info,
+                )
+
+                judgment += ("\n" + new_judgment)
+
+                score, try_again = get_score(judgment, self.pattern)
+
+                conv.append({"role": "assistant", "content": new_judgment})
+
+                if not try_again:
+                    break
+
+                conv.append({"role": "user", "content": "continue your judgment and finish by outputting a final verdict label"})
+
+            result = {
+                "user_prompt": conv[1]["content"],
+                "judgment": judgment,
+                "score":score
+            }
+            output["games"].append(result)
+
+        with open(output_file, "a") as f:
+            f.write(json.dumps(output, ensure_ascii=False) + "\n")
 
 
-# get answer from model
-def get_answer(model, conv, temperature, max_tokens, endpoint_dict=None):
-    api_dict = get_endpoint(endpoint_dict["endpoints"])
-    model_name = endpoint_dict['model_name'] if endpoint_dict else model
-
-    if endpoint_dict["api_type"] == "anthropic":
-        output = chat_completion_anthropic(model_name, conv, temperature, max_tokens)
-    elif endpoint_dict["api_type"] == "azure":
-        output = chat_completion_openai_azure(model_name, conv, temperature, max_tokens, api_dict)
-    else:
-        output = chat_completion_openai(model_name, conv, temperature, max_tokens, 1, api_dict)
-    return output
-
-
-def judgment(**args):
-    question = args["question"]
-    answer = args["answer"]
-    reference = args["reference"]
-    baseline = args["baseline_answer"]
-    configs = args["configs"]
-    output_file = args["output_file"]
-    model = configs["judge_model"]
-
-    num_games = 2 if configs["pairwise"] else 1
-
-    output = {
-        "question_id":question["question_id"],
-        "model":answer["model_id"],
-        "judge": model,
-        "games":[]
-        }
-
-    for game in range(num_games):
-        conv = [{"role": "system", "content": configs["system_prompt"]}]
-
-        for template in configs["prompt_template"]:
-            prompt_args = {}
-
-            for i, turn in enumerate(question["turns"]):
-                prompt_args[f"question_{i+1}"] = turn["content"]
-            base = 1
-
-            if baseline:
-                if game % 2 == 1: # swap position
-                    temp = baseline
-                    baseline = answer
-                    answer = temp
-
-                for i, turn in enumerate(baseline["choices"][0]["turns"]):
-                    prompt_args[f"answer_{i+1}"] = turn["content"]
-                    base += 1
-            if answer:
-                for i, turn in enumerate(answer["choices"][0]["turns"]):
-                    prompt_args[f"answer_{i+base}"] = turn["content"]
-
-            if reference:
-                for j, ref_answer in enumerate(reference):
-                    for i, turn in enumerate(ref_answer["choices"][0]["turns"]):
-                        prompt_args[f"ref_answer_{i+j+1}"] = turn["content"]
-            
-            user_prompt = template.format(**prompt_args)
-            conv.append({"role": "user", "content": user_prompt})
-
-        judgment = ""
-        for _ in range(2):
-            new_judgment = get_answer(
-                model,
-                conv,
-                configs["temperature"],
-                configs["max_tokens"],
-                args["endpoint_dict"],
+    def judge(self):
+        output_files = {}
+        for model in self.models:
+            output_files[model] = os.path.join(
+                self.output_dir,
+                f"{model}.jsonl",
             )
 
-            judgment += ("\n" + new_judgment)
+        for output_file in output_files.values():
+            os.makedirs(os.path.dirname(output_file), exist_ok=True)
 
-            score, try_again = get_score(judgment, args["regex_pattern"])
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self.endpoint_info["parallel"]) as executor:
+            futures = []
+            for model in self.models:
+                count = 0
+                for question in self.questions:
+                    question_id = question["question_id"]
 
-            conv.append({"role": "assistant", "content": new_judgment})
+                    if model in self.model_answers and not question_id in self.model_answers[model]:
+                        print(f"Warning: {model} answer to {question['question_id']} cannot be found.")
+                        continue
 
-            if not try_again:
-                break
+                    if model in self.existing_judgments and question_id in self.existing_judgments[model]:
+                        count += 1
+                        continue
 
-            conv.append({"role": "user", "content": "continue your judgment and finish by outputting a final verdict label"})
+                    answer = self.model_answers[model][question_id]
+                    if self.ref_answers:
+                        reference = [ref_answer[question_id] for ref_answer in self.ref_answers]
+                        assert len(reference) == len(self.settings["ref_model"])
+                    else:
+                        reference = None
+                    if self.settings["baseline"]:
+                        baseline_answer = self.model_answers[self.settings["baseline_model"]][question_id]
+                    else:
+                        baseline_answer = None
 
-        result = {
-            "user_prompt": conv[1]["content"],
-            "judgment": judgment,
-            "score":score
-        }
-        output["games"].append(result)
+                    future = executor.submit(
+                        self.judgment, 
+                        question, 
+                        answer, 
+                        reference, 
+                        baseline_answer,
+                        output_files[model]
+                    )
+                    futures.append(future)
 
-    with open(output_file, "a") as f:
-        f.write(json.dumps(output, ensure_ascii=False) + "\n")
+                if count > 0:
+                    print(f"{count} number of existing judgments")
 
+            for future in tqdm(
+                concurrent.futures.as_completed(futures), total=len(futures)
+            ):
+                future.result()
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--setting-file", type=str, default="config/judge_config.yaml")
-    parser.add_argument("--endpoint-file", type=str, default="config/api_config.yaml")
-    args = parser.parse_args()
-    print(args)
-
-    configs = make_config(args.setting_file)
-    endpoint_list = make_config(args.endpoint_file)
-
-    print(f'judge model: {configs["judge_model"]}, baseline: {configs["baseline"]}, baseline model: {configs["baseline_model"]}, reference: {configs["reference"]}, '
-          + f'reference models: {configs["ref_model"]}, temperature: {configs["temperature"]}, max tokens: {configs["max_tokens"]}, pairwise: {configs["pairwise"]}')
-
-    if configs["regex_pattern"]:
-        pattern = re.compile(configs["regex_pattern"])
-
-    question_file = os.path.join("data", configs["bench_name"], "question.jsonl")
-    answer_dir = os.path.join("data", configs["bench_name"], "model_answer")
-    ref_answer_dir = os.path.join("data", configs["bench_name"], "reference_answer")
-
-    questions = load_questions(question_file)
-    model_answers = load_model_answers(answer_dir)
-    
-    # if user choose a set of models, only judge those models
-    models = [model for model in configs["model_list"]]
-        
-    ref_answers = None
-    if configs["reference"]:
-        ref_answers = load_model_answers(ref_answer_dir)
-        ref_answers = [ref_answers[model] for model in configs["ref_model"]]
-    
-    output_files = {}
-    output_dir = f"data/{configs['bench_name']}/model_judgment/{configs['judge_model']}"
-    for model in models:
-        output_files[model] = os.path.join(
-            output_dir,
-            f"{model}.jsonl",
+    def __str__(self):
+        return (
+            f'\njudge model: {self.settings["judge_model"]}, baseline: {self.settings["baseline"]}, baseline model: {self.settings["baseline_model"]},' 
+            f'reference: {self.settings["reference"]}, reference models: {self.settings["ref_model"]}, temperature: {self.settings["temperature"]}, '
+            f'max tokens: {self.settings["max_tokens"]}, pairwise: {self.settings["pairwise"]}\n'
         )
-
-    for output_file in output_files.values():
-        os.makedirs(os.path.dirname(output_file), exist_ok=True)
-
-    existing_judgments = load_model_answers(output_dir)
-
-    endpoint_info = endpoint_list[configs["judge_model"]]
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=endpoint_info["parallel"]) as executor:
-        futures = []
-        for model in models:
-            count = 0
-            for question in questions:
-                question_id = question["question_id"]
-
-                kwargs = {}
-                kwargs["question"] = question
-                if model in model_answers and not question_id in model_answers[model]:
-                    print(f"Warning: {model} answer to {question['question_id']} cannot be found.")
-                    continue
-
-                if model in existing_judgments and question_id in existing_judgments[model]:
-                    count += 1
-                    continue
-
-                kwargs["answer"] = model_answers[model][question_id]
-                if ref_answers:
-                    kwargs["reference"] = [ref_answer[question_id] for ref_answer in ref_answers]
-                    assert len(kwargs["reference"]) == len(configs["ref_model"])
-                else:
-                    kwargs["reference"] = None
-                if configs["baseline"]:
-                    kwargs["baseline_answer"] = model_answers[configs["baseline_model"]][question_id]
-                else:
-                    kwargs["baseline_answer"] = None
-                kwargs["configs"] = configs
-                kwargs["endpoint_dict"] = endpoint_info
-                kwargs["output_file"] = output_files[model]
-                kwargs["regex_pattern"] = pattern
-                future = executor.submit(judgment, **kwargs)
-                futures.append(future)
-
-            if count > 0:
-                print(f"{count} number of existing judgments")
-
-        for future in tqdm(
-            concurrent.futures.as_completed(futures), total=len(futures)
-        ):
-            future.result()

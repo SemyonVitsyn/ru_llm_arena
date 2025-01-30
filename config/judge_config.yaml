@@ -30,8 +30,8 @@ model_list:
   - c4ai-command-r-v01
   - snorkel-mistral-pairrm-dpo
   - neural-chat-7b-v3-3
-  - gigachat_lite
-  - gigachat_pro
+  # - gigachat_lite
+  # - gigachat_pro
   - hermes-2-pro-llama-3-8b
   - gpt-4-1106-preview
   - vikhr-it-5.2-fp16-cp
