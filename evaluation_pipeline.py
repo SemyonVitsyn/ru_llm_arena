@@ -13,44 +13,40 @@ TASK_TYPES = [
 
 BASELINE_MODEL_NAME = "gpt-3.5-turbo-0125"
 
-def generate(generation_config, endpoint_file):
+def generate(generation_path, endpoint_file):
     print("\n\n----------------------------GENERATION----------------------------")
-    generator = AnswerGenerator(generation_config, endpoint_file)
+    generator = AnswerGenerator(generation_path, endpoint_file)
     print(generator)
     generator.generate()
 
-def judge(judgement_config, endpoint_file):
-    print("\n\n----------------------------JUDGEMENT----------------------------")
-    judge = Judge(judgement_config, endpoint_file)
+def judge(judgment_path, generation_path, endpoint_file):
+    print("\n\n----------------------------JUDGMENT----------------------------")
+    judge = Judge(judgment_path, generation_path, endpoint_file)
     print(judge)
     judge.judge()
 
-def result(bench_name, judge_name, baseline, load_battles, load_bootstrap, show_elo,
-               length_control, weight, num_rounds, output, first_game_only):
+def result(generation_path, judgment_path, load_battles, load_bootstrap, show_elo,
+                    length_control, weight, num_rounds, output, first_game_only):
     print("\n\n----------------------------RESULT----------------------------")
-    result = Result(bench_name, judge_name, baseline, load_battles, load_bootstrap, show_elo,
+    result = Result(generation_path, judgment_path, load_battles, load_bootstrap, show_elo,
                     length_control, weight, num_rounds, output, first_game_only)
     print(result)
     result.show()
 
-def full_pipeline(generation_config, judgement_config, endpoint_file, bench_name, judge_name, 
-                  baseline, load_battles, load_bootstrap, show_elo, length_control, weight, 
-                  num_rounds, output, first_game_only):
+def full_pipeline(generation_path, judgment_path, endpoint_file, load_battles, load_bootstrap, 
+                  show_elo, length_control, weight, num_rounds, output, first_game_only):
     
-    generate(generation_config, endpoint_file)
-    judge(judgement_config, endpoint_file)
-    result(bench_name, judge_name, baseline, load_battles, load_bootstrap, show_elo,
-               length_control, weight, num_rounds, output, first_game_only)
+    generate(generation_path, endpoint_file)
+    judge(judgment_path, generation_path, endpoint_file)
+    result(generation_path, judgment_path, load_battles, load_bootstrap, show_elo,
+                    length_control, weight, num_rounds, output, first_game_only)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--task-type", type=str, default="full_pipeline")
-    parser.add_argument("--generation-config", type=str, default="config/gen_answer_config.yaml")
-    parser.add_argument("--endpoint-file", type=str, default="config/api_config.yaml")
-    parser.add_argument("--judgement-config", type=str, default="config/judge_config.yaml")
-    parser.add_argument("--bench-name", type=str, default="arena-hard-v0.1")
-    parser.add_argument("--judge-name", type=str, default="gpt-4-1106-preview")
-    parser.add_argument("--baseline", type=str, default=BASELINE_MODEL_NAME)
+    parser.add_argument("--generation-path", type=str, default="data/arena-hard-v0.1/model_answer/default")
+    parser.add_argument("--endpoint-file", type=str, default="default_config/api_config.yaml")
+    parser.add_argument("--judgment-path", type=str, default="data/arena-hard-v0.1/model_judgment/gpt-4-1106-preview_default")
     parser.add_argument("--load-battles", action="store_true")
     parser.add_argument("--load-bootstrap", action="store_true")
     parser.add_argument("--show-elo", action="store_true")
@@ -68,14 +64,13 @@ if __name__ == "__main__":
 
 
     if args.task_type == "generate":
-        generate(args.generation_config, args.endpoint_file)
+        generate(args.generation_path, args.endpoint_file)
     elif args.task_type == "judge":
-        judge(args.judgement_config, args.endpoint_file)
+        judge(args.judgment_path, args.generation_path, args.endpoint_file)
     elif args.task_type == "show":
-        result(args.bench_name, args.judge_name, args.baseline, args.load_battles, args.load_bootstrap, args.show_elo,
+        result(args.generation_path, args.judgment_path, args.load_battles, args.load_bootstrap, args.show_elo,
                args.length_control, args.weight, args.num_rounds, args.output, args.first_game_only)
     else:
-        full_pipeline(args.generation_config, args.judgement_config, args.endpoint_file, args.bench_name, args.judge_name, 
-                      args.baseline, args.load_battles, args.load_bootstrap, args.show_elo, args.length_control, 
-                      args.weight, args.num_rounds, args.output, args.first_game_only)
+        full_pipeline(args.generation_path, args.judgment_path, args.endpoint_file,args.load_battles, args.load_bootstrap,
+                       args.show_elo, args.length_control, args.weight, args.num_rounds, args.output, args.first_game_only)
 

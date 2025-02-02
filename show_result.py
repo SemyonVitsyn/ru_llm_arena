@@ -12,7 +12,8 @@ from utils import (
     load_questions, 
     load_model_answers, 
     get_models_answers_lengths, 
-    get_win_rate_column
+    get_win_rate_column,
+    make_config
 )
 
 from rich.console import Console
@@ -20,10 +21,13 @@ from rich.table import Table
 
 
 class Result:
-    def __init__(self, bench_name, judge_name, baseline, load_battles, load_bootstrap, show_elo, length_control, weight, num_rounds, output, first_game_only):
-        self.bench_name = bench_name
-        self.judge_name = judge_name
-        self.baseline = baseline
+    def __init__(self, generation_path, judgment_path, load_battles=False, load_bootstrap=False, show_elo=False, 
+                 length_control=False, weight=3, num_rounds=100, output=False, first_game_only=False):
+        self.judgment_path = judgment_path
+        self.judge_config = make_config(os.path.join(judgment_path, "config", "judge_config.yaml"))
+        self.bench_name = self.judge_config["bench_name"]
+        self.judge_name = self.judge_config["judge_model"]
+        self.baseline = self.judge_config["baseline_model"]
         self.load_battles = load_battles
         self.load_bootstrap = load_bootstrap
         self.show_elo = show_elo
@@ -34,7 +38,7 @@ class Result:
         self.first_game_only = first_game_only 
 
         self.questions_df = pd.DataFrame(load_questions(os.path.join("data", self.bench_name, "question.jsonl"))).set_index('question_id')
-        self.model_answers_df = pd.DataFrame(load_model_answers(os.path.join("data", self.bench_name, "model_answer"))).T
+        self.model_answers_df = pd.DataFrame(load_model_answers(generation_path)).T
         self.models_answers_lengths = get_models_answers_lengths(self.questions_df, self.model_answers_df)
 
     def compute_ratings(self, df: pd.DataFrame, initial: float = 1000., base: float = 10.,
@@ -68,7 +72,7 @@ class Result:
 
         print("Turning judgment results into battles...")
 
-        directory = f"data/arena-hard-v0.1/model_judgment/{self.judge_name}"
+        directory = self.judgment_path
         assert os.path.exists(directory)
         for file in tqdm(glob(f"{directory}/*jsonl")):
             df = pd.read_json(file, lines=True)

@@ -4,6 +4,7 @@ import re
 import concurrent.futures
 
 from tqdm import tqdm
+from pathlib import Path
 
 from utils import (
     load_questions,
@@ -16,14 +17,14 @@ from utils import (
 
 
 class Judge:
-    def __init__(self, judgement_config_file, endpoint_file):
-        self.settings = make_config(judgement_config_file)
+    def __init__(self, judgment_path, generation_path, endpoint_file):
+        self.settings = make_config(os.path.join(judgment_path, "config", "judge_config.yaml"))
         self.endpoint_list = make_config(endpoint_file)
         if self.settings["regex_pattern"]:
             self.pattern = re.compile(self.settings["regex_pattern"])
-        
+
         self.questions = load_questions(os.path.join("data", self.settings["bench_name"], "question.jsonl"))
-        self.model_answers = load_model_answers(os.path.join("data", self.settings["bench_name"], "model_answer"))
+        self.model_answers = load_model_answers(generation_path)
 
         self.models = [model for model in self.settings["model_list"]]
         
@@ -32,7 +33,7 @@ class Judge:
             self.ref_answers = load_model_answers(os.path.join("data", self.settings["bench_name"], "reference_answer"))
             self.ref_answers = [self.ref_answers[model] for model in self.settings["ref_model"]]
     
-        self.output_dir = os.path.join("data", self.settings['bench_name'], "model_judgment", self.settings['judge_model'])
+        self.output_dir = judgment_path
         self.existing_judgments = load_model_answers(self.output_dir)
         self.endpoint_info = self.endpoint_list[self.settings["judge_model"]]
 

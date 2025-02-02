@@ -22,42 +22,4 @@ prompt_template: ["<|User Prompt|>\n{question_1}\n\n<|The Start of Assistant A's
 
 # Add your model below for evaluation
 model_list:
-  - meta-llama-3-8b-instruct
-  - suzume-llama-3-8b-multilingual
-  - yandex_gpt_pro
-  - starling-lm-7b-beta
-  - openchat-3.5-0106
-  - c4ai-command-r-v01
-  - snorkel-mistral-pairrm-dpo
-  - neural-chat-7b-v3-3
-  # - gigachat_lite
-  # - gigachat_pro
-  - hermes-2-pro-llama-3-8b
-  - gpt-4-1106-preview
-  - vikhr-it-5.2-fp16-cp
-  - sfr-iterative-dpo-llama-3-8b-r
-  - aya-23-8b
-  - kolibri-vikhr-mistral-0427
-  - phi-3-medium-4k-instruct
-  - openchat-3.6-8b-20240522
-  - llama-3-instruct-8b-simpo
-  - vikhr-it-5.3-fp16
-  - qwen2-7b-instruct
-  - mistral-7b-instruct-v0.3
-  - vikhr-it-5.3-fp16-32k
-  - paralex-llama-3-8b-sft
-  - storm-7b
-  - llama-3-instruct-8b-sppo-iter3
-  - suzume-llama-3-8B-multilingual-orpo-borda-half
-  - saiga_llama3_8b_v6
-  - llama-3-smaug-8b
-  - hermes-2-theta-llama-3-8b
-  - gemma-2-9b-it
-  - llama-3-8b-saiga-suzume-ties
-  - gemma-2-9b-it-sppo-iter3
-  - vikhr-it-5.4-fp16-orpo-v2
-  - t-lite-instruct-0.1
-  - mistral-nemo-instruct-2407
-  - gpt-4o-mini
-  - gpt-3.5-turbo-1106
-  - glm-4-9b-chat
+  - gpt-3.5-turbo-0125 # baseline

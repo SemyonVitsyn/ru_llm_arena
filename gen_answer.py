@@ -27,10 +27,11 @@ from utils import (
 
 
 class AnswerGenerator:
-    def __init__(self, generation_config_file, endpoint_file):
-        self.settings = make_config(generation_config_file)
+    def __init__(self, generation_path, endpoint_file):
+        self.settings = make_config(os.path.join(generation_path, "config", "gen_answer_config.yaml"))
         self.endpoint_list = make_config(endpoint_file)
-        self.existing_answer = load_model_answers(os.path.join("data", self.settings["bench_name"], "model_answer"))
+        self.generation_path = generation_path
+        self.existing_answer = load_model_answers(generation_path)
         self.questions = load_questions(os.path.join("data", self.settings["bench_name"], "question.jsonl"))
 
     def get_answer(self, question: dict, model: str, endpoint_info: dict, max_tokens: int, answer_file: str, api_dict: dict):
@@ -120,7 +121,7 @@ class AnswerGenerator:
             assert model in self.endpoint_list
 
             endpoint_info = self.endpoint_list[model]
-            answer_file = os.path.join("data", self.settings["bench_name"], "model_answer", f"{model}.jsonl")
+            answer_file = os.path.join(self.generation_path, f"{model}.jsonl")
 
             print(f"Output to {answer_file}")
 
